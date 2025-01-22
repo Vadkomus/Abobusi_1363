@@ -1,0 +1,104 @@
+#include <SPI.h>
+#include <Wire.h>
+#include <RF24.h>
+#include <LiquidCrystal.h>
+#include <Servo.h>ц
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP280.h>
+
+LiquidCrystal lcd(2,3,4,5,6,7);
+Servo myservo;
+Adafruit_BMP280 bmp;
+RF24 radio(9, 10); // CE, CSN 
+const byte address[6] = "00001";
+const int a_inv = 5; 
+const int b = 12;
+const int m = 94;
+
+void setup() {
+  Serial.begin(9600);
+  lcd.begin(16, 2);
+  myservo.attach(8);
+  Serial.println(F("BMP280 test"));
+  if (!bmp.begin(0x76)) {  
+    Serial.println(F("Could not find a valid BMP280 sensor, check wiring!"));
+    while (1);
+  }
+  radio.begin();
+  radio.openReadingPipe(0, address);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.startListening();
+}
+
+void loop() {
+if (radio.available()) {
+    char text[32] = ""; 
+    radio.read(&text, sizeof(text));
+    Serial.println(text);
+    String decodedMessage = affine_decoder(String(text));
+    float temperature = bmp.readTemperature();
+    float pressure = bmp.readPressure();
+    lcd.clear();
+    if (decodedMessage.length() > 16) {
+      lcd.setCursor(0, 0);
+      lcd.print(decodedMessage.substring(0, 16));
+      lcd.setCursor(0, 1);
+      lcd.print(decodedMessage.substring(16));
+    } else {
+      lcd.setCursor(0, 0);
+      lcd.print(decodedMessage);
+    }
+    int angle = getAngle(decodedMessage);
+    if (angle != -1){
+      myservo.write(angle);
+    }
+    delay(1000);
+    lcd.clear();
+    temp(temperature);
+    pres(pressure);
+  }
+}
+
+float temp(float tempdata){
+  lcd.setCursor(0,0);
+  lcd.print("[Temperature]:");
+  lcd.setCursor(0,1);
+  lcd.print(tempdata);
+  lcd.setCursor(6, 1);
+  lcd.print("*C");
+  delay(1000);
+  lcd.clear();
+}
+
+float pres(float presdata){
+  lcd.setCursor(0,0);
+  lcd.print("[Pressure]:");
+  lcd.setCursor(0,1);
+  lcd.print(presdata);
+  lcd.setCursor(10, 1);
+  lcd.print("Pa");
+  delay(1000);
+  lcd.clear();
+}
+
+String affine_decoder(String text) {
+  String decoded_message = "";
+  for (char &c : text) {
+    int x = (a_inv * ((c - 32 - b + m) % m)) % m + 32;
+    decoded_message += char(x);
+  }
+  return decoded_message;
+}
+
+int getAngle(String message) {
+  int startIndex = message.indexOf("Azimuth:");
+  if (startIndex != -1) { 
+    startIndex += 8;
+    int endIndex = message.indexOf('*', startIndex);
+    if (endIndex != -1) {
+      String angleStr = message.substring(startIndex, endIndex);
+      return angleStr.toInt();
+    }
+  }
+  return -1;
+}

@@ -1,0 +1,37 @@
+#include <SPI.h>
+#include <RF24.h>
+
+RF24 radio(9, 10); // CE, CSN
+const byte address[6] = "00001";
+const int a = 19;      
+const int b = 12;
+const int m = 94;      
+void setup() {
+  Serial.begin(9600);
+  radio.begin();
+  radio.openWritingPipe(address);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.stopListening();
+}
+void loop() {
+ String messages[] = {
+    "Azimuth: 127*",
+    "X:0126 Y:0460 Z:0793",
+    "Vx:+04 Vy:+06 Vz:-03",
+    "Status: Working"
+  };
+  for (String msg : messages) {
+    String codedMessage = affine_coder(msg);
+    Serial.println(codedMessage);
+    radio.write(codedMessage.c_str(), codedMessage.length() + 1);
+    delay(3000);
+  }
+}
+String affine_coder(String text) {
+  String coded_message = "";
+  for (char &c : text) {
+    int x = ((a * (c - 32) + b) % m) + 32; 
+    coded_message += char(x);
+  }
+  return coded_message;
+}
